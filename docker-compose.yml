@@ -60,12 +60,6 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    # Uncomment to enable in production:
-    # command: >
-    #   -c shared_preload_libraries=pgvector
-    #   -c log_statement=all
-    #   -c log_duration=on
-
   # Redis for Caching (optional, for advanced features)
   redis-cache:
     image: redis:7-alpine
