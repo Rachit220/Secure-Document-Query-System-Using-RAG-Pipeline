@@ -21,8 +21,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Download spaCy model for Presidio
 RUN python -m spacy download en_core_web_md
-
-# ============================================================================
 # Final Stage
 FROM python:3.11-slim
 
