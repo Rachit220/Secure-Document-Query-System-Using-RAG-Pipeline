@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 try:
     from presidio_analyzer import AnalyzerEngine
+    from presidio_analyzer.nlp_engine import NlpEngineProvider
     from presidio_anonymizer import AnonymizerEngine
     PRESIDIO_AVAILABLE = True
 except ImportError:
@@ -38,9 +39,15 @@ class PiiSanitizer:
         self.detected_entities: List[PiiEntity] = []
         if self.use_presidio:
             try:
-                self.analyzer = AnalyzerEngine()
+                config = {
+                    'nlp_engine_name': 'spacy',
+                    'models': [{'lang_code': 'en', 'model_name': 'en_core_web_md'}]
+                }
+                provider = NlpEngineProvider(nlp_configuration=config)
+                nlp_engine = provider.create_engine()
+                self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
                 self.anonymizer = AnonymizerEngine()
-                logger.info('Presidio PII Detection Engine initialized')
+                logger.info('Presidio PII Detection Engine initialized with en_core_web_md')
             except Exception as e:
                 logger.warning(f'Failed to initialize Presidio: {e}. Falling back to regex.')
                 self.use_presidio = False
