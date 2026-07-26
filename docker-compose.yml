@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  # Main FastAPI Application
+  doc-query-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: secure-doc-query-api
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - API_KEY=${API_KEY:-dev-key-change-in-production}
+      - CHROMA_DB_PATH=/data/chroma_db
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - CHUNK_SIZE=${CHUNK_SIZE:-1000}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-100}
+      - USE_PRESIDIO=${USE_PRESIDIO:-true}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - WORKERS=${WORKERS:-1}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - chroma_data:/data/chroma_db
+      - ./logs:/app/logs
+    networks:
+      - secure-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    depends_on:
+      - postgres-pgvector
+    labels:
+      - "app=secure-doc-query"
+      - "version=1.0.0"
+
+  # PostgreSQL with PgVector (optional, for production use)
+  postgres-pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: secure-doc-query-pgvector
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-docquery_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-docquery_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - secure-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-docquery_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # Uncomment to enable in production:
+    # command: >
+    #   -c shared_preload_libraries=pgvector
+    #   -c log_statement=all
+    #   -c log_duration=on
+
+  # Redis for Caching (optional, for advanced features)
+  redis-cache:
+    image: redis:7-alpine
+    container_name: secure-doc-query-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - secure-network
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_password_change_me}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Prometheus for Metrics (optional, for monitoring)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: secure-doc-query-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - secure-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana for Dashboards (optional, for visualization)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: secure-doc-query-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin_password_change_me}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    networks:
+      - secure-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+volumes:
+  chroma_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  secure-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
